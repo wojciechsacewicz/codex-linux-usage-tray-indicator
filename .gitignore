@@ -1,0 +1,62 @@
+# Build output
+/target/
+/dist/
+/release/
+
+# Local binaries and generated files
+codex-usage-tray
+codex-usage-tray-rs
+*.d
+*.rlib
+*.rmeta
+
+# Local Codex data. Never commit session logs or memories.
+.codex/
+codex/
+sessions/
+archived_sessions/
+memories/
+rollout_summaries/
+*.jsonl
+
+# Secrets and machine-local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.age
+*.kdbx
+
+# Logs, caches, and temp files
+*.log
+*.tmp
+*.temp
+*.cache
+.cache/
+.tmp/
+tmp/
+coverage/
+
+# Editor and OS noise
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Screenshots can contain private usage data. Add sanitized images explicitly.
+screenshots/
+*.png
+*.jpg
+*.jpeg
+*.webp
+!docs/*.png
+!docs/*.jpg
+!docs/*.jpeg
+!docs/*.webp
