@@ -34,6 +34,15 @@ This project is best described as:
 
 It is **not** a Niri app, Quickshell widget, GNOME extension, KDE plasmoid, or Codex Desktop plugin. It should work on any Linux desktop that exposes AppIndicator/status-notifier items, including setups that use panels such as Waybar, AGS, Quickshell, KDE Plasma, GNOME with an indicator extension, and many wlroots-based environments.
 
+## Tech Stack
+
+- **Rust** — native binary with no background web runtime.
+- **GTK3** — tray menu, labels, settings-style UI, and transient windows.
+- **Ayatana AppIndicator** — Linux tray/status-notifier integration.
+- **GTK Layer Shell** — fullscreen Wayland overlay used by party mode.
+- **Cairo** — lightweight confetti drawing for reset celebrations.
+- **Local JSONL parsing** — reads Codex session events directly from disk.
+
 ## Features
 
 - Shows 5-hour and weekly Codex rate-limit usage in the tray.
@@ -74,7 +83,7 @@ Before publishing screenshots, use synthetic or redacted data. Real tray screens
 
 ## Requirements
 
-Install Rust plus the native GTK/AppIndicator development libraries.
+Install Rust plus the native GTK/AppIndicator development libraries. `gtk-layer-shell` is required for the fullscreen party-mode reset overlay.
 
 On Arch Linux:
 
@@ -171,7 +180,9 @@ Codex Usage Tray is designed to sit quietly in the background. It does not poll 
 
 ## Party Mode
 
-When a 5-hour or weekly rate-limit window resets, Codex Usage Tray can show a short fullscreen celebration overlay using GTK Layer Shell. This is intentionally separate from notifications: desktop notifications always fire, while the confetti overlay can be turned on or off from the tray menu.
+When a 5-hour or weekly rate-limit window resets, Codex Usage Tray can show a short fullscreen "rate limit has been reset" celebration overlay with confetti. The overlay is implemented with GTK Layer Shell, which is why `gtk-layer-shell` is part of the native dependency stack.
+
+This is intentionally separate from notifications: desktop notifications always fire, while the fullscreen confetti overlay can be turned on or off from the tray menu.
 
 The setting is stored in:
 
