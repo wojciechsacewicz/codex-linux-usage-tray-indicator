@@ -33,6 +33,8 @@ It is **not** a Niri app, Quickshell widget, GNOME extension, KDE plasmoid, or C
 - Breaks down input, cached input, output, and reasoning tokens.
 - Opens a local HTML dashboard with model-level usage details.
 - Sends desktop notifications for reset events and fast usage pace.
+- Includes optional party mode: a fullscreen confetti overlay when a rate-limit window resets.
+- Lets you toggle party mode from the tray menu; reset notifications still work when it is off.
 - Reads only local Codex JSONL event files.
 
 ## Privacy
@@ -151,6 +153,24 @@ Codex stores session events as JSONL. This app walks the local session directori
 
 The tray itself is native GTK3 with Ayatana AppIndicator. The reset celebration overlay uses `gtk-layer-shell`, which makes it suitable for Wayland compositors.
 
+## Party Mode
+
+When a 5-hour or weekly rate-limit window resets, Codex Usage Tray can show a short fullscreen celebration overlay using GTK Layer Shell. This is intentionally separate from notifications: desktop notifications always fire, while the confetti overlay can be turned on or off from the tray menu.
+
+The setting is stored in:
+
+```text
+$XDG_CONFIG_HOME/codex-usage-tray/config.json
+```
+
+If `XDG_CONFIG_HOME` is not set, it falls back to:
+
+```text
+$HOME/.config/codex-usage-tray/config.json
+```
+
+The Details dashboard shows whether party mode is currently enabled.
+
 ## Naming
 
 Good repository names:
@@ -181,3 +201,10 @@ codex, rust, gtk, appindicator, tray, linux, wayland, gtk-layer-shell
 ## License
 
 The crate metadata currently uses `MIT OR Apache-2.0`. Add the actual `LICENSE-MIT` and `LICENSE-APACHE` files before publishing, or change the license field to match your preferred license.
+
+```text
+        _../|_
+      ='__   _~-.
+           \'  ~-`\._
+                 |/~'
+```

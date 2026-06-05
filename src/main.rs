@@ -258,6 +258,7 @@ struct AppState {
     cost_total_label: *mut GtkWidget,
     tokens_today_label: *mut GtkWidget,
     tokens_total_label: *mut GtkWidget,
+    party_mode_label: *mut GtkWidget,
     last_render: Option<RenderSnapshot>,
     seen_primary_window: bool,
     last_primary_resets_at: Option<i64>,
@@ -278,6 +279,7 @@ struct RenderSnapshot {
     cost_total_markup: String,
     tokens_today_markup: String,
     tokens_total_markup: String,
+    party_mode_markup: String,
     tray_label: String,
     title: String,
     icon_name: String,
@@ -484,6 +486,46 @@ fn details_html_path() -> PathBuf {
 
 fn icon_dir() -> PathBuf {
     env::temp_dir().join("codex-usage-tray-icons")
+}
+
+fn config_path() -> PathBuf {
+    if let Some(config_home) = env::var_os("XDG_CONFIG_HOME") {
+        return PathBuf::from(config_home).join("codex-usage-tray/config.json");
+    }
+    if let Some(home) = env::var_os("HOME") {
+        return PathBuf::from(home).join(".config/codex-usage-tray/config.json");
+    }
+    PathBuf::from("codex-usage-tray-config.json")
+}
+
+fn party_mode_enabled() -> bool {
+    let Ok(content) = fs::read_to_string(config_path()) else {
+        return true;
+    };
+    serde_json::from_str::<Value>(&content)
+        .ok()
+        .and_then(|value| value.get("party_mode").and_then(Value::as_bool))
+        .unwrap_or(true)
+}
+
+fn set_party_mode(enabled: bool) {
+    let path = config_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let body = format!(
+        "{{\n  \"party_mode\": {}\n}}\n",
+        if enabled { "true" } else { "false" }
+    );
+    let _ = fs::write(path, body);
+}
+
+fn party_mode_markup() -> String {
+    if party_mode_enabled() {
+        "🎉  Party mode:  <b>On</b>".into()
+    } else {
+        "🎉  Party mode:  <b>Off</b>".into()
+    }
 }
 
 fn file_key(path: &Path) -> Option<(u64, u128)> {
@@ -816,8 +858,9 @@ fn make_details_text(stats: &Stats) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "Codex Usage\n\nPlan: {}\n\nRate limits\n5h: {:.0}% | reset in {} | pace: {} | expected {:.1}%\nWeekly: {:.0}% | reset in {}\n\nCosts\nToday: {} tokens | {}\nThis month: {} tokens | {}\nAll-time: {} tokens | {}\n\nToken breakdown\nAll-time input: {}\nAll-time cached input: {}\nAll-time output: {}\nAll-time reasoning: {}\nSkipped with no public API price: {}\n\nModels\n{}\n\nSource: {} token_count events from {} JSONL files\n",
+        "Codex Usage\n\nPlan: {}\nParty mode: {}\n\nRate limits\n5h: {:.0}% | reset in {} | pace: {} | expected {:.1}%\nWeekly: {:.0}% | reset in {}\n\nCosts\nToday: {} tokens | {}\nThis month: {} tokens | {}\nAll-time: {} tokens | {}\n\nToken breakdown\nAll-time input: {}\nAll-time cached input: {}\nAll-time output: {}\nAll-time reasoning: {}\nSkipped with no public API price: {}\n\nModels\n{}\n\nSource: {} token_count events from {} JSONL files\n",
         display_plan(&rate.plan_type),
+        if party_mode_enabled() { "on" } else { "off" },
         rate.primary.used_percent,
         reset_text(rate.primary.resets_at),
         pace_text(&rate.primary),
@@ -849,6 +892,7 @@ fn make_details_html(stats: &Stats) -> String {
     let month_cost = sum_cost(&stats.month_by_model);
     let month_range = current_month_range_text();
     let rate = stats.rate_limits.clone().unwrap_or_default();
+    let party_mode = party_mode_enabled();
     let mut top: Vec<_> = stats.by_model.iter().collect();
     top.sort_by_key(|(_, usage)| -usage.total_tokens);
     let model_rows = top
@@ -1139,6 +1183,17 @@ tr:last-child td {{ border-bottom: 0; }}
       <div class="small">Expected <strong class="muted">{:.1}%</strong> of the 5h window by now.</div>
     </article>
 
+    <article class="card pad span-12">
+      <div class="rate-head">
+        <div>
+          <div class="label">Party mode</div>
+          <div class="metric">{}</div>
+        </div>
+        <div class="plan">{}</div>
+      </div>
+      <div class="small">Reset notifications always stay enabled. Party mode controls the fullscreen confetti overlay and can be toggled from the tray menu.</div>
+    </article>
+
     <article class="card pad span-4">
       <div class="label">Today's cost</div>
       <div class="metric">{}</div>
@@ -1210,6 +1265,12 @@ tr:last-child td {{ border-bottom: 0; }}
         primary_pace(&rate.primary)
             .map(|pace| pace.expected_percent)
             .unwrap_or(0.0),
+        if party_mode { "On" } else { "Off" },
+        if party_mode {
+            "Confetti enabled"
+        } else {
+            "Notifications only"
+        },
         dollars(today_cost),
         full_tokens(stats.today.total_tokens),
         dollars(month_cost),
@@ -1338,6 +1399,11 @@ unsafe extern "C" fn on_details(_widget: *mut GtkWidget, _data: *mut c_void) {
     let details = details_html_path();
     let _ = fs::write(&details, make_details_html(&stats));
     let _ = Command::new("xdg-open").arg(details).spawn();
+}
+
+unsafe extern "C" fn on_toggle_party_mode(_widget: *mut GtkWidget, _data: *mut c_void) {
+    set_party_mode(!party_mode_enabled());
+    update_state();
 }
 
 unsafe extern "C" fn on_quit(_widget: *mut GtkWidget, _data: *mut c_void) {
@@ -1606,7 +1672,9 @@ fn send_reset_notification(body: &str, party: bool) {
         .arg("Codex Usage")
         .arg(body)
         .spawn();
-    show_confetti(body, party);
+    if party_mode_enabled() {
+        show_confetti(body, party);
+    }
 }
 
 fn send_plain_notification(body: &str) {
@@ -1708,6 +1776,7 @@ fn make_render_snapshot(stats: &Stats) -> RenderSnapshot {
             "🟣  Total token usage:  <b>{}</b>",
             full_tokens(stats.total.total_tokens)
         ),
+        party_mode_markup: party_mode_markup(),
         tray_label: format!(
             "5h {:.0}% | {}",
             rate.primary.used_percent,
@@ -1749,6 +1818,7 @@ fn update_state() {
             set_markup(state.cost_total_label, &snapshot.cost_total_markup);
             set_markup(state.tokens_today_label, &snapshot.tokens_today_markup);
             set_markup(state.tokens_total_label, &snapshot.tokens_total_markup);
+            set_markup(state.party_mode_label, &snapshot.party_mode_markup);
             let tray_label = c_string(&snapshot.tray_label);
             let guide = c_string("5h 000% | $000");
             app_indicator_set_label(state.indicator, tray_label.as_ptr(), guide.as_ptr());
@@ -1861,6 +1931,7 @@ fn main() {
             markup_menu_item("🟣  Today's token usage:  <b>loading...</b>");
         let (tokens_total_item, tokens_total_label) =
             markup_menu_item("🟣  Total token usage:  <b>loading...</b>");
+        let (party_mode_item, party_mode_label) = markup_menu_item(&party_mode_markup());
         let details = menu_item("Details", true);
         let refresh = menu_item("Refresh", true);
         let quit = menu_item("Quit", true);
@@ -1879,6 +1950,8 @@ fn main() {
             tokens_today_item,
             tokens_total_item,
             gtk_separator_menu_item_new(),
+            party_mode_item,
+            gtk_separator_menu_item_new(),
             details,
             gtk_separator_menu_item_new(),
             refresh,
@@ -1886,6 +1959,7 @@ fn main() {
         ] {
             gtk_menu_shell_append(menu, item);
         }
+        connect_activate(party_mode_item, on_toggle_party_mode);
         connect_activate(details, on_details);
         connect_activate(refresh, on_refresh);
         connect_activate(quit, on_quit);
@@ -1903,6 +1977,7 @@ fn main() {
                 cost_total_label,
                 tokens_today_label,
                 tokens_total_label,
+                party_mode_label,
                 last_render: None,
                 seen_primary_window: false,
                 last_primary_resets_at: None,
