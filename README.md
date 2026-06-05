@@ -131,6 +131,14 @@ Print the HTML dashboard to stdout:
 
 ## Install Locally
 
+The easiest path: download the latest GitHub Release, unpack it, and run:
+
+```bash
+./install.sh
+```
+
+Or just ask your AI agent to install the latest release of `codex-linux-usage-tray-indicator` from GitHub.
+
 Copy the binary somewhere on your `PATH`:
 
 ```bash
