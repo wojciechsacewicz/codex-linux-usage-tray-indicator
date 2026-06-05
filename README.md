@@ -216,4 +216,14 @@ codex, rust, gtk, appindicator, tray, linux, wayland, gtk-layer-shell
 
 ## License
 
-The crate metadata currently uses `MIT OR Apache-2.0`. Add the actual `LICENSE-MIT` and `LICENSE-APACHE` files before publishing, or change the license field to match your preferred license.
+Licensed under either of:
+
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+
+```text
+        _../|_
+      ='__   _~-.
+           \'  ~-`\._
+                 |/~'
+```
