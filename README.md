@@ -4,12 +4,18 @@
   <strong>A small native Linux tray applet for watching local Codex usage without opening a terminal.</strong>
 </p>
 
+<img width="363" height="462" alt="image" src="https://github.com/user-attachments/assets/de3ac8bb-75ae-4f6f-a974-4aca186d2f89" />
+<img width="1245" height="958" alt="image" src="https://github.com/user-attachments/assets/aad08a49-1a9b-406d-abb2-b7f3f3b8b523" />
+
+
 <p align="center">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-b7410e?style=flat-square">
   <img alt="GTK" src="https://img.shields.io/badge/GTK-3-4a86cf?style=flat-square">
   <img alt="AppIndicator" src="https://img.shields.io/badge/Ayatana-AppIndicator-35a16b?style=flat-square">
   <img alt="Wayland" src="https://img.shields.io/badge/Wayland-gtk--layer--shell-6b7280?style=flat-square">
 </p>
+
+## Pr's are welcome!
 
 Codex Usage Tray reads your local Codex session event logs and turns them into a compact status indicator: current rate-limit usage, reset times, token totals, and API-equivalent cost estimates. It is built as a native Linux desktop applet, not a shell widget or window-manager plugin.
 
