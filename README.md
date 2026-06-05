@@ -9,7 +9,7 @@
 
 
 <p align="center">
-  <img alt="Rust" src="https://img.shields.io/badge/Rust-2024-b7410e?style=flat-square">
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-stable-b7410e?style=flat-square">
   <img alt="GTK" src="https://img.shields.io/badge/GTK-3-4a86cf?style=flat-square">
   <img alt="AppIndicator" src="https://img.shields.io/badge/Ayatana-AppIndicator-35a16b?style=flat-square">
   <img alt="Wayland" src="https://img.shields.io/badge/Wayland-gtk--layer--shell-6b7280?style=flat-square">
@@ -34,6 +34,7 @@ It is **not** a Niri app, Quickshell widget, GNOME extension, KDE plasmoid, or C
 
 - Shows 5-hour and weekly Codex rate-limit usage in the tray.
 - Displays reset countdowns and local reset times.
+- Lets you choose the refresh interval from the tray menu.
 - Tracks whether the current 5-hour window is ahead of expected pace.
 - Estimates today's, current month's, and all-time API-equivalent cost.
 - Breaks down input, cached input, output, and reasoning tokens.
@@ -41,6 +42,7 @@ It is **not** a Niri app, Quickshell widget, GNOME extension, KDE plasmoid, or C
 - Sends desktop notifications for reset events and fast usage pace.
 - Includes optional party mode: a fullscreen confetti overlay when a rate-limit window resets.
 - Lets you toggle party mode from the tray menu; reset notifications still work when it is off.
+- Keeps background work modest: cached JSONL parsing, configurable refresh intervals, and no network calls.
 - Reads only local Codex JSONL event files.
 
 ## Privacy
@@ -158,6 +160,10 @@ A generic version can watch for known Codex Desktop process names and launch `co
 Codex stores session events as JSONL. This app walks the local session directories, parses `token_count` events, tracks the latest rate-limit payload, and aggregates usage by day, month, and model. It keeps a lightweight file cache keyed by file size and modification timestamp so refreshes stay cheap.
 
 The tray itself is native GTK3 with Ayatana AppIndicator. The reset celebration overlay uses `gtk-layer-shell`, which makes it suitable for Wayland compositors.
+
+## System Usage
+
+Codex Usage Tray is designed to sit quietly in the background. It does not poll the network, does not keep a database, and does not reparse unchanged session files on every refresh. The refresh interval is configurable from the tray menu, so you can choose a live-feeling 5-second update or a quieter 5-minute cadence.
 
 ## Party Mode
 
