@@ -139,6 +139,8 @@ The easiest path: download the latest GitHub Release, unpack it, and run:
 
 Or just ask your AI agent to install the latest release of `codex-linux-usage-tray-indicator` from GitHub.
 
+Agents can follow [AGENT_INSTALL.md](AGENT_INSTALL.md) for exact download, install, verification, and post-install explanation steps.
+
 Copy the binary somewhere on your `PATH`:
 
 ```bash
