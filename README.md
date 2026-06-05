@@ -4,9 +4,13 @@
   <strong>A small native Linux tray applet for watching local Codex usage without opening a terminal.</strong>
 </p>
 
-<img width="363" height="462" alt="image" src="https://github.com/user-attachments/assets/de3ac8bb-75ae-4f6f-a974-4aca186d2f89" />
-<img width="1245" height="958" alt="image" src="https://github.com/user-attachments/assets/aad08a49-1a9b-406d-abb2-b7f3f3b8b523" />
+<p align="center">
+  <img width="260" alt="Codex Usage Tray menu" src="https://github.com/user-attachments/assets/de3ac8bb-75ae-4f6f-a974-4aca186d2f89">
+</p>
 
+<p align="center">
+  <img width="760" alt="Codex Usage details dashboard" src="https://github.com/user-attachments/assets/aad08a49-1a9b-406d-abb2-b7f3f3b8b523">
+</p>
 
 <p align="center">
   <img alt="Rust" src="https://img.shields.io/badge/Rust-stable-b7410e?style=flat-square">
