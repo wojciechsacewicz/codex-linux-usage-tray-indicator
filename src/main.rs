@@ -1,7 +1,6 @@
 use chrono::{DateTime, Datelike, Local, NaiveDate, TimeZone, Utc};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::env;
 use std::ffi::{CString, c_char, c_int, c_void};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,17 +10,17 @@ use std::sync::{Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
 use walkdir::WalkDir;
 
-const REFRESH_SECONDS: u32 = 30;
+mod config;
+mod paths;
+mod pricing;
+
+use config::*;
+use paths::*;
+use pricing::*;
+
 const PRIMARY_WINDOW_SECONDS: i64 = 5 * 60 * 60;
 const PACE_ALERT_AHEAD_PERCENT: f64 = 10.0;
 const PACE_ALERT_CLEAR_PERCENT: f64 = 5.0;
-
-#[derive(Clone, Copy)]
-struct Price {
-    input: f64,
-    cached_input: f64,
-    output: f64,
-}
 
 #[derive(Clone, Default)]
 struct Usage {
@@ -259,7 +258,9 @@ struct AppState {
     tokens_today_label: *mut GtkWidget,
     tokens_total_label: *mut GtkWidget,
     party_mode_label: *mut GtkWidget,
+    refresh_interval_label: *mut GtkWidget,
     last_render: Option<RenderSnapshot>,
+    last_refresh_at: Option<i64>,
     seen_primary_window: bool,
     last_primary_resets_at: Option<i64>,
     pace_alert_active: bool,
@@ -280,6 +281,7 @@ struct RenderSnapshot {
     tokens_today_markup: String,
     tokens_total_markup: String,
     party_mode_markup: String,
+    refresh_interval_markup: String,
     tray_label: String,
     title: String,
     icon_name: String,
@@ -289,88 +291,6 @@ unsafe impl Send for AppState {}
 
 static STATE: OnceLock<Mutex<AppState>> = OnceLock::new();
 static STATS_CACHE: OnceLock<Mutex<StatsCache>> = OnceLock::new();
-
-fn price(model: &str) -> Option<Price> {
-    match normalize_model(model).as_str() {
-        "gpt-5.5" => Some(Price {
-            input: 5.00,
-            cached_input: 0.50,
-            output: 30.00,
-        }),
-        "gpt-5.4" => Some(Price {
-            input: 2.50,
-            cached_input: 0.25,
-            output: 15.00,
-        }),
-        "gpt-5.4-mini" => Some(Price {
-            input: 0.75,
-            cached_input: 0.075,
-            output: 4.50,
-        }),
-        "gpt-5.4-nano" => Some(Price {
-            input: 0.20,
-            cached_input: 0.02,
-            output: 1.25,
-        }),
-        "gpt-5.2" | "gpt-5.2-codex" => Some(Price {
-            input: 1.75,
-            cached_input: 0.175,
-            output: 14.00,
-        }),
-        "gpt-5.1" | "gpt-5.1-codex" | "gpt-5.1-codex-max" | "gpt-5" | "gpt-5-codex" => {
-            Some(Price {
-                input: 1.25,
-                cached_input: 0.125,
-                output: 10.00,
-            })
-        }
-        "gpt-5-mini" => Some(Price {
-            input: 0.25,
-            cached_input: 0.025,
-            output: 2.00,
-        }),
-        "gpt-5-nano" => Some(Price {
-            input: 0.05,
-            cached_input: 0.005,
-            output: 0.40,
-        }),
-        _ => None,
-    }
-}
-
-fn normalize_model(model: &str) -> String {
-    if model.starts_with("gpt-5.5") {
-        "gpt-5.5".into()
-    } else if model.starts_with("gpt-5.4-mini") {
-        "gpt-5.4-mini".into()
-    } else if model.starts_with("gpt-5.4-nano") {
-        "gpt-5.4-nano".into()
-    } else if model.starts_with("gpt-5.4") {
-        "gpt-5.4".into()
-    } else if model.starts_with("gpt-5.2-codex") {
-        "gpt-5.2-codex".into()
-    } else if model.starts_with("gpt-5.2") {
-        "gpt-5.2".into()
-    } else if model.starts_with("gpt-5.1-codex-max") {
-        "gpt-5.1-codex-max".into()
-    } else if model.starts_with("gpt-5.1-codex") {
-        "gpt-5.1-codex".into()
-    } else if model.starts_with("gpt-5.1") {
-        "gpt-5.1".into()
-    } else if model.starts_with("gpt-5-mini") {
-        "gpt-5-mini".into()
-    } else if model.starts_with("gpt-5-nano") {
-        "gpt-5-nano".into()
-    } else if model.starts_with("gpt-5-codex") {
-        "gpt-5-codex".into()
-    } else if model.starts_with("gpt-5") {
-        "gpt-5".into()
-    } else if model.is_empty() {
-        "unknown".into()
-    } else {
-        model.into()
-    }
-}
 
 fn value_i64(value: &Value, key: &str) -> i64 {
     value.get(key).and_then(Value::as_i64).unwrap_or(0)
@@ -468,64 +388,6 @@ fn collect_stats_cached(cache: &mut StatsCache) -> Stats {
     cache.last_month = Some(month);
     cache.last_stats = Some(stats.clone());
     stats
-}
-
-fn codex_home() -> PathBuf {
-    if let Some(path) = env::var_os("CODEX_HOME") {
-        return PathBuf::from(path);
-    }
-    if let Some(home) = env::var_os("HOME") {
-        return PathBuf::from(home).join(".codex");
-    }
-    PathBuf::from(".codex")
-}
-
-fn details_html_path() -> PathBuf {
-    env::temp_dir().join("codex-usage-tray-details.html")
-}
-
-fn icon_dir() -> PathBuf {
-    env::temp_dir().join("codex-usage-tray-icons")
-}
-
-fn config_path() -> PathBuf {
-    if let Some(config_home) = env::var_os("XDG_CONFIG_HOME") {
-        return PathBuf::from(config_home).join("codex-usage-tray/config.json");
-    }
-    if let Some(home) = env::var_os("HOME") {
-        return PathBuf::from(home).join(".config/codex-usage-tray/config.json");
-    }
-    PathBuf::from("codex-usage-tray-config.json")
-}
-
-fn party_mode_enabled() -> bool {
-    let Ok(content) = fs::read_to_string(config_path()) else {
-        return true;
-    };
-    serde_json::from_str::<Value>(&content)
-        .ok()
-        .and_then(|value| value.get("party_mode").and_then(Value::as_bool))
-        .unwrap_or(true)
-}
-
-fn set_party_mode(enabled: bool) {
-    let path = config_path();
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let body = format!(
-        "{{\n  \"party_mode\": {}\n}}\n",
-        if enabled { "true" } else { "false" }
-    );
-    let _ = fs::write(path, body);
-}
-
-fn party_mode_markup() -> String {
-    if party_mode_enabled() {
-        "🎉  Party mode:  <b>On</b>".into()
-    } else {
-        "🎉  Party mode:  <b>Off</b>".into()
-    }
 }
 
 fn file_key(path: &Path) -> Option<(u64, u128)> {
@@ -839,6 +701,7 @@ fn make_details_text(stats: &Stats) -> String {
     let today_cost = sum_cost(&stats.today_by_model);
     let month_cost = sum_cost(&stats.month_by_model);
     let rate = stats.rate_limits.clone().unwrap_or_default();
+    let config = load_config();
     let mut top: Vec<_> = stats.by_model.iter().collect();
     top.sort_by_key(|(_, usage)| -usage.total_tokens);
     let model_lines = top
@@ -858,9 +721,10 @@ fn make_details_text(stats: &Stats) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "Codex Usage\n\nPlan: {}\nParty mode: {}\n\nRate limits\n5h: {:.0}% | reset in {} | pace: {} | expected {:.1}%\nWeekly: {:.0}% | reset in {}\n\nCosts\nToday: {} tokens | {}\nThis month: {} tokens | {}\nAll-time: {} tokens | {}\n\nToken breakdown\nAll-time input: {}\nAll-time cached input: {}\nAll-time output: {}\nAll-time reasoning: {}\nSkipped with no public API price: {}\n\nModels\n{}\n\nSource: {} token_count events from {} JSONL files\n",
+        "Codex Usage\n\nPlan: {}\nParty mode: {}\nRefresh interval: {}\n\nRate limits\n5h: {:.0}% | reset in {} | pace: {} | expected {:.1}%\nWeekly: {:.0}% | reset in {}\n\nCosts\nToday: {} tokens | {}\nThis month: {} tokens | {}\nAll-time: {} tokens | {}\n\nToken breakdown\nAll-time input: {}\nAll-time cached input: {}\nAll-time output: {}\nAll-time reasoning: {}\nSkipped with no public API price: {}\n\nModels\n{}\n\nSource: {} token_count events from {} JSONL files\n",
         display_plan(&rate.plan_type),
-        if party_mode_enabled() { "on" } else { "off" },
+        if config.party_mode { "on" } else { "off" },
+        duration_label(config.refresh_seconds),
         rate.primary.used_percent,
         reset_text(rate.primary.resets_at),
         pace_text(&rate.primary),
@@ -892,7 +756,7 @@ fn make_details_html(stats: &Stats) -> String {
     let month_cost = sum_cost(&stats.month_by_model);
     let month_range = current_month_range_text();
     let rate = stats.rate_limits.clone().unwrap_or_default();
-    let party_mode = party_mode_enabled();
+    let config = load_config();
     let mut top: Vec<_> = stats.by_model.iter().collect();
     top.sort_by_key(|(_, usage)| -usage.total_tokens);
     let model_rows = top
@@ -1194,6 +1058,17 @@ tr:last-child td {{ border-bottom: 0; }}
       <div class="small">Reset notifications always stay enabled. Party mode controls the fullscreen confetti overlay and can be toggled from the tray menu.</div>
     </article>
 
+    <article class="card pad span-12">
+      <div class="rate-head">
+        <div>
+          <div class="label">Refresh interval</div>
+          <div class="metric">{}</div>
+        </div>
+        <div class="plan">Tray menu setting</div>
+      </div>
+      <div class="small">This controls how often the app re-walks local Codex session files. Lower values feel more live; higher values use less background work.</div>
+    </article>
+
     <article class="card pad span-4">
       <div class="label">Today's cost</div>
       <div class="metric">{}</div>
@@ -1265,12 +1140,13 @@ tr:last-child td {{ border-bottom: 0; }}
         primary_pace(&rate.primary)
             .map(|pace| pace.expected_percent)
             .unwrap_or(0.0),
-        if party_mode { "On" } else { "Off" },
-        if party_mode {
+        if config.party_mode { "On" } else { "Off" },
+        if config.party_mode {
             "Confetti enabled"
         } else {
             "Notifications only"
         },
+        duration_label(config.refresh_seconds),
         dollars(today_cost),
         full_tokens(stats.today.total_tokens),
         dollars(month_cost),
@@ -1360,7 +1236,7 @@ fn lerp_u8(from: u8, to: u8, t: f64) -> u8 {
 }
 
 fn ensure_icon(percent: f64) -> String {
-    let pct = percent.clamp(0.0, 99.0).round() as i64;
+    let pct = percent.clamp(0.0, 100.0).round() as i64;
     let name = format!("codex-usage-{pct}");
     let dir = icon_dir();
     let _ = fs::create_dir_all(dir);
@@ -1391,7 +1267,7 @@ unsafe fn set_markup(label: *mut GtkWidget, markup: &str) {
 }
 
 unsafe extern "C" fn on_refresh(_widget: *mut GtkWidget, _data: *mut c_void) {
-    update_state();
+    update_state(true);
 }
 
 unsafe extern "C" fn on_details(_widget: *mut GtkWidget, _data: *mut c_void) {
@@ -1403,7 +1279,32 @@ unsafe extern "C" fn on_details(_widget: *mut GtkWidget, _data: *mut c_void) {
 
 unsafe extern "C" fn on_toggle_party_mode(_widget: *mut GtkWidget, _data: *mut c_void) {
     set_party_mode(!party_mode_enabled());
-    update_state();
+    update_state(true);
+}
+
+unsafe extern "C" fn on_refresh_5s(_widget: *mut GtkWidget, _data: *mut c_void) {
+    set_refresh_seconds(5);
+    update_state(true);
+}
+
+unsafe extern "C" fn on_refresh_15s(_widget: *mut GtkWidget, _data: *mut c_void) {
+    set_refresh_seconds(15);
+    update_state(true);
+}
+
+unsafe extern "C" fn on_refresh_30s(_widget: *mut GtkWidget, _data: *mut c_void) {
+    set_refresh_seconds(30);
+    update_state(true);
+}
+
+unsafe extern "C" fn on_refresh_60s(_widget: *mut GtkWidget, _data: *mut c_void) {
+    set_refresh_seconds(60);
+    update_state(true);
+}
+
+unsafe extern "C" fn on_refresh_300s(_widget: *mut GtkWidget, _data: *mut c_void) {
+    set_refresh_seconds(300);
+    update_state(true);
 }
 
 unsafe extern "C" fn on_quit(_widget: *mut GtkWidget, _data: *mut c_void) {
@@ -1411,7 +1312,7 @@ unsafe extern "C" fn on_quit(_widget: *mut GtkWidget, _data: *mut c_void) {
 }
 
 unsafe extern "C" fn on_timer(_data: *mut c_void) -> c_int {
-    update_state();
+    update_state(false);
     1
 }
 
@@ -1585,13 +1486,13 @@ unsafe extern "C" fn tick_confetti(data: *mut c_void) -> c_int {
 }
 
 fn overlay_markup(message: &str, big: bool) -> String {
-    let body = if big {
+    let body = html_escape(if big {
         "THE WEEKLY RATE LIMIT HAS BEEN RESET!"
     } else if message.contains("5 hour") {
         "The 5 hour rate limit has been reset!"
     } else {
         message
-    };
+    });
     if big {
         format!(
             "<span font_desc=\"72\">🎉 🎊 🥳 ✨ 🎉</span>\n<span font_desc=\"24\" weight=\"bold\">{body}</span>"
@@ -1777,6 +1678,7 @@ fn make_render_snapshot(stats: &Stats) -> RenderSnapshot {
             full_tokens(stats.total.total_tokens)
         ),
         party_mode_markup: party_mode_markup(),
+        refresh_interval_markup: refresh_interval_markup(),
         tray_label: format!(
             "5h {:.0}% | {}",
             rate.primary.used_percent,
@@ -1796,11 +1698,19 @@ fn make_render_snapshot(stats: &Stats) -> RenderSnapshot {
     }
 }
 
-fn update_state() {
-    let stats = collect_stats();
-    let rate = stats.rate_limits.clone().unwrap_or_default();
+fn update_state(force: bool) {
     if let Some(state) = STATE.get() {
         let mut state = state.lock().unwrap();
+        let now = Utc::now().timestamp();
+        let refresh_due = state
+            .last_refresh_at
+            .is_none_or(|last| now - last >= refresh_seconds() as i64);
+        if !force && !refresh_due {
+            return;
+        }
+        state.last_refresh_at = Some(now);
+        let stats = collect_stats();
+        let rate = stats.rate_limits.clone().unwrap_or_default();
         maybe_notify_primary_reset(&mut state, &rate);
         maybe_notify_fast_pace(&mut state, &rate);
         maybe_notify_secondary_reset(&mut state, &rate);
@@ -1819,6 +1729,10 @@ fn update_state() {
             set_markup(state.tokens_today_label, &snapshot.tokens_today_markup);
             set_markup(state.tokens_total_label, &snapshot.tokens_total_markup);
             set_markup(state.party_mode_label, &snapshot.party_mode_markup);
+            set_markup(
+                state.refresh_interval_label,
+                &snapshot.refresh_interval_markup,
+            );
             let tray_label = c_string(&snapshot.tray_label);
             let guide = c_string("5h 000% | $000");
             app_indicator_set_label(state.indicator, tray_label.as_ptr(), guide.as_ptr());
@@ -1932,6 +1846,13 @@ fn main() {
         let (tokens_total_item, tokens_total_label) =
             markup_menu_item("🟣  Total token usage:  <b>loading...</b>");
         let (party_mode_item, party_mode_label) = markup_menu_item(&party_mode_markup());
+        let (refresh_interval_item, refresh_interval_label) =
+            markup_menu_item(&refresh_interval_markup());
+        let refresh_5s = menu_item("Every 5 seconds", true);
+        let refresh_15s = menu_item("Every 15 seconds", true);
+        let refresh_30s = menu_item("Every 30 seconds", true);
+        let refresh_60s = menu_item("Every 1 minute", true);
+        let refresh_300s = menu_item("Every 5 minutes", true);
         let details = menu_item("Details", true);
         let refresh = menu_item("Refresh", true);
         let quit = menu_item("Quit", true);
@@ -1951,6 +1872,12 @@ fn main() {
             tokens_total_item,
             gtk_separator_menu_item_new(),
             party_mode_item,
+            refresh_interval_item,
+            refresh_5s,
+            refresh_15s,
+            refresh_30s,
+            refresh_60s,
+            refresh_300s,
             gtk_separator_menu_item_new(),
             details,
             gtk_separator_menu_item_new(),
@@ -1960,6 +1887,11 @@ fn main() {
             gtk_menu_shell_append(menu, item);
         }
         connect_activate(party_mode_item, on_toggle_party_mode);
+        connect_activate(refresh_5s, on_refresh_5s);
+        connect_activate(refresh_15s, on_refresh_15s);
+        connect_activate(refresh_30s, on_refresh_30s);
+        connect_activate(refresh_60s, on_refresh_60s);
+        connect_activate(refresh_300s, on_refresh_300s);
         connect_activate(details, on_details);
         connect_activate(refresh, on_refresh);
         connect_activate(quit, on_quit);
@@ -1978,7 +1910,9 @@ fn main() {
                 tokens_today_label,
                 tokens_total_label,
                 party_mode_label,
+                refresh_interval_label,
                 last_render: None,
+                last_refresh_at: None,
                 seen_primary_window: false,
                 last_primary_resets_at: None,
                 pace_alert_active: false,
@@ -1987,8 +1921,8 @@ fn main() {
                 last_secondary_resets_at: None,
             }))
             .ok();
-        update_state();
-        g_timeout_add_seconds(REFRESH_SECONDS, Some(on_timer), ptr::null_mut());
+        update_state(true);
+        g_timeout_add_seconds(MIN_REFRESH_SECONDS, Some(on_timer), ptr::null_mut());
         gtk_main();
     }
 }
