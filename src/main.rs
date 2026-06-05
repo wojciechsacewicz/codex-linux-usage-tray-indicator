@@ -1602,8 +1602,13 @@ fn maybe_notify_primary_reset(state: &mut AppState, rate: &RateLimits) {
 
 fn maybe_notify_fast_pace(state: &mut AppState, rate: &RateLimits) {
     if rate.primary.resets_at != state.pace_alert_window {
-        state.pace_alert_active = false;
         state.pace_alert_window = rate.primary.resets_at;
+        if state.pace_alert_window.is_some() {
+            state.pace_alert_active = primary_pace(&rate.primary)
+                .is_some_and(|pace| pace.ahead_percent >= PACE_ALERT_AHEAD_PERCENT);
+            return;
+        }
+        state.pace_alert_active = false;
     }
     let Some(pace) = primary_pace(&rate.primary) else {
         state.pace_alert_active = false;
