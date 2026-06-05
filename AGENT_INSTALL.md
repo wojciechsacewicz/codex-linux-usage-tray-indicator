@@ -1,6 +1,7 @@
 # AI Agent Install Guide
 
 This file is written for AI coding agents installing Codex Usage Tray for a user.
+Do not describe the maintainer or repository owner; focus only on the app, installation steps, and user-visible behavior.
 
 ## Goal
 
@@ -94,12 +95,16 @@ setsid -f ~/.local/bin/codex-usage-tray
 
 ## Optional Autostart
 
-To start on login:
+Autostart is not enabled by `install.sh`.
+
+If the user wants Codex Usage Tray to start on login, they must enable autostart manually:
 
 ```bash
 mkdir -p ~/.config/autostart
 cp ~/.local/share/applications/codex-usage-tray.desktop ~/.config/autostart/
 ```
+
+Tell the user explicitly whether you enabled autostart. Do not imply it was enabled automatically.
 
 ## Verify
 
@@ -119,4 +124,7 @@ Use a concise summary like:
 Codex Usage Tray is installed and running. It adds a native Linux tray item that shows Codex rate limits, reset times, token usage, and estimated API-equivalent cost from your local Codex session files. Use Details for the dashboard, Refresh now for an immediate update, and the settings/menu controls for refresh interval and party mode. It reads local files only and does not send usage data anywhere.
 ```
 
-Mention any caveats that applied during installation, especially missing desktop tray support or missing native libraries.
+Also mention:
+
+- whether autostart was left disabled or manually enabled;
+- any caveats that applied during installation, especially missing desktop tray support or missing native libraries.

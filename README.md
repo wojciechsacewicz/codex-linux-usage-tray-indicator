@@ -137,6 +137,8 @@ The easiest path: download the latest GitHub Release, unpack it, and run:
 ./install.sh
 ```
 
+The installer copies the binary and desktop entry only. It does not enable login autostart.
+
 Or just ask your AI agent to install the latest release of `codex-linux-usage-tray-indicator` from GitHub.
 
 Agents can follow [AGENT_INSTALL.md](AGENT_INSTALL.md) for exact download, install, verification, and post-install explanation steps.
@@ -166,7 +168,7 @@ Save that as:
 ~/.local/share/applications/codex-usage-tray.desktop
 ```
 
-For login autostart, copy the same desktop entry to:
+Login autostart is manual and optional. To enable it, copy the same desktop entry to:
 
 ```text
 ~/.config/autostart/codex-usage-tray.desktop
