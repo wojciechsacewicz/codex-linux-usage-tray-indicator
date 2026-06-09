@@ -19,6 +19,7 @@ use paths::*;
 use pricing::*;
 
 const PRIMARY_WINDOW_SECONDS: i64 = 5 * 60 * 60;
+const WEEKLY_WINDOW_SECONDS: i64 = 7 * 24 * 60 * 60;
 const PACE_ALERT_AHEAD_PERCENT: f64 = 10.0;
 const PACE_ALERT_CLEAR_PERCENT: f64 = 5.0;
 
@@ -685,6 +686,29 @@ fn usage_bar(percent: f64) -> String {
     let filled = ((percent.clamp(0.0, 100.0) / 10.0).round() as usize).clamp(0, 10);
     let empty = 10 - filled;
     format!("{}{}", "▰".repeat(filled), "▱".repeat(empty))
+}
+
+fn display_window(limit: &WindowLimit, window_seconds: i64) -> WindowLimit {
+    let Some(reset) = limit.resets_at else {
+        return limit.clone();
+    };
+    let now = Utc::now().timestamp();
+    if now < reset {
+        return limit.clone();
+    }
+    let windows_elapsed = ((now - reset) / window_seconds) + 1;
+    WindowLimit {
+        used_percent: 0.0,
+        resets_at: Some(reset + windows_elapsed * window_seconds),
+    }
+}
+
+fn display_rate_limits(rate: &RateLimits) -> RateLimits {
+    RateLimits {
+        plan_type: rate.plan_type.clone(),
+        primary: display_window(&rate.primary, PRIMARY_WINDOW_SECONDS),
+        secondary: display_window(&rate.secondary, WEEKLY_WINDOW_SECONDS),
+    }
 }
 
 fn current_month_range_text() -> String {
@@ -1653,7 +1677,7 @@ fn maybe_notify_secondary_reset(state: &mut AppState, rate: &RateLimits) {
 }
 
 fn make_render_snapshot(stats: &Stats) -> RenderSnapshot {
-    let rate = stats.rate_limits.clone().unwrap_or_default();
+    let rate = display_rate_limits(&stats.rate_limits.clone().unwrap_or_default());
     let total_cost = sum_cost(&stats.by_model);
     let today_cost = sum_cost(&stats.today_by_model);
     let month_cost = sum_cost(&stats.month_by_model);
