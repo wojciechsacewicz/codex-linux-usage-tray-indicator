@@ -677,6 +677,12 @@ fn pace_delta_markup(limit: &WindowLimit) -> String {
     }
 }
 
+fn usage_bar(percent: f64) -> String {
+    let filled = ((percent.clamp(0.0, 100.0) / 10.0).round() as usize).clamp(0, 10);
+    let empty = 10 - filled;
+    format!("{}{}", "▰".repeat(filled), "▱".repeat(empty))
+}
+
 fn current_month_range_text() -> String {
     let now = Local::now();
     let year = now.year();
@@ -1649,13 +1655,15 @@ fn make_render_snapshot(stats: &Stats) -> RenderSnapshot {
     let month_cost = sum_cost(&stats.month_by_model);
     RenderSnapshot {
         limit_markup: format!(
-            "<b>5h</b>  {:.0}%  |  reset in {} at {}",
+            "{}  <b>{:.0}%</b>  |  reset in {} at {}",
+            usage_bar(rate.primary.used_percent),
             rate.primary.used_percent,
             reset_text(rate.primary.resets_at),
             reset_clock_text(rate.primary.resets_at)
         ),
         weekly_markup: format!(
-            "<b>Weekly</b>  {:.0}%  |  reset in {} at {}",
+            "{}  <b>{:.0}%</b>  |  reset in {} at {}",
+            usage_bar(rate.secondary.used_percent),
             rate.secondary.used_percent,
             reset_text(rate.secondary.resets_at),
             reset_clock_text(rate.secondary.resets_at)
@@ -1824,10 +1832,14 @@ fn main() {
         app_indicator_set_icon_theme_path(indicator, icon_path.as_ptr());
         let menu = gtk_menu_new();
         let (rate_header, _rate_header_label) = markup_menu_item("<b>Rate limits</b>");
-        let (limit_item, limit_label) = markup_menu_item("<b>5h</b>  loading...");
-        let (weekly_item, weekly_label) = markup_menu_item("<b>Weekly</b>  loading...");
+        let (primary_header, _primary_header_label) = markup_menu_item("<b>5h</b>");
+        let (limit_item, limit_label) = markup_menu_item("▱▱▱▱▱▱▱▱▱▱  loading...");
+        let (weekly_header, _weekly_header_label) = markup_menu_item("<b>Weekly</b>");
+        let (weekly_item, weekly_label) = markup_menu_item("▱▱▱▱▱▱▱▱▱▱  loading...");
         let (pace_item, pace_label) = markup_menu_item("<b>Pace:</b>  loading...");
         gtk_widget_set_sensitive(rate_header, 0);
+        gtk_widget_set_sensitive(primary_header, 0);
+        gtk_widget_set_sensitive(weekly_header, 0);
         let (cost_today_item, cost_today_label) =
             markup_menu_item("Today's cost:  <b>loading...</b>");
         let (cost_month_item, cost_month_label) =
@@ -1855,7 +1867,9 @@ fn main() {
         let quit = menu_item("Quit", true);
         for item in [
             rate_header,
+            primary_header,
             limit_item,
+            weekly_header,
             weekly_item,
             gtk_separator_menu_item_new(),
             pace_item,
