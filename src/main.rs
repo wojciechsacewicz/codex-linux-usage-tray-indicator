@@ -665,21 +665,6 @@ fn pace_text(limit: &WindowLimit) -> String {
     }
 }
 
-fn pace_dot(limit: &WindowLimit) -> &'static str {
-    let Some(pace) = primary_pace(limit) else {
-        return "⚪";
-    };
-    if pace.ahead_percent >= PACE_ALERT_AHEAD_PERCENT {
-        "🔴"
-    } else if pace.ahead_percent > 5.0 {
-        "🟠"
-    } else if pace.ahead_percent > 1.0 {
-        "🟡"
-    } else {
-        "🟢"
-    }
-}
-
 fn current_month_range_text() -> String {
     let now = Local::now();
     let year = now.year();
@@ -1203,18 +1188,6 @@ fn c_string(value: &str) -> CString {
     CString::new(value.replace('\0', "")).unwrap()
 }
 
-fn limit_dot(percent: f64) -> &'static str {
-    if percent >= 90.0 {
-        "🔴"
-    } else if percent >= 70.0 {
-        "🟠"
-    } else if percent >= 50.0 {
-        "🟡"
-    } else {
-        "🟢"
-    }
-}
-
 fn icon_color(percent: f64) -> String {
     smooth_limit_color(percent)
 }
@@ -1664,39 +1637,33 @@ fn make_render_snapshot(stats: &Stats) -> RenderSnapshot {
     let month_cost = sum_cost(&stats.month_by_model);
     RenderSnapshot {
         limit_markup: format!(
-            "{}  <b>5h</b>  {:.0}%  |  reset in {} at {}",
-            limit_dot(rate.primary.used_percent),
+            "<b>5h</b>  {:.0}%  |  reset in {} at {}",
             rate.primary.used_percent,
             reset_text(rate.primary.resets_at),
             reset_clock_text(rate.primary.resets_at)
         ),
         weekly_markup: format!(
-            "{}  <b>Weekly</b>  {:.0}%  |  reset in {} at {}",
-            limit_dot(rate.secondary.used_percent),
+            "<b>Weekly</b>  {:.0}%  |  reset in {} at {}",
             rate.secondary.used_percent,
             reset_text(rate.secondary.resets_at),
             reset_clock_text(rate.secondary.resets_at)
         ),
-        pace_markup: format!(
-            "{}  <b>Pace:</b>  {}",
-            pace_dot(&rate.primary),
-            pace_text(&rate.primary)
-        ),
+        pace_markup: format!("<b>Pace:</b>  {}", pace_text(&rate.primary)),
         pace_expected_markup: format!(
             "   Expected usage:  <b>{:.1}%</b>",
             primary_pace(&rate.primary)
                 .map(|pace| pace.expected_percent)
                 .unwrap_or(0.0)
         ),
-        cost_today_markup: format!("🔵  Today's cost:  <b>{}</b>", dollars(today_cost)),
-        cost_month_markup: format!("🔵  Monthly cost:  <b>{}</b>", dollars(month_cost)),
-        cost_total_markup: format!("🔵  Total estimated cost:  <b>{}</b>", dollars(total_cost)),
+        cost_today_markup: format!("Today's cost:  <b>{}</b>", dollars(today_cost)),
+        cost_month_markup: format!("Monthly cost:  <b>{}</b>", dollars(month_cost)),
+        cost_total_markup: format!("Total estimated cost:  <b>{}</b>", dollars(total_cost)),
         tokens_today_markup: format!(
-            "🟣  Today's token usage:  <b>{}</b>",
+            "Today's token usage:  <b>{}</b>",
             full_tokens(stats.today.total_tokens)
         ),
         tokens_total_markup: format!(
-            "🟣  Total token usage:  <b>{}</b>",
+            "Total token usage:  <b>{}</b>",
             full_tokens(stats.total.total_tokens)
         ),
         party_mode_markup: party_mode_markup(),
@@ -1852,23 +1819,25 @@ fn main() {
         app_indicator_set_icon_theme_path(indicator, icon_path.as_ptr());
         let menu = gtk_menu_new();
         let (rate_header, _rate_header_label) = markup_menu_item("<b>Rate limits</b>");
-        let (limit_item, limit_label) = markup_menu_item("⚪  <b>5h</b>  loading...");
-        let (weekly_item, weekly_label) = markup_menu_item("⚪  <b>Weekly</b>  loading...");
-        let (pace_item, pace_label) = markup_menu_item("⚪  <b>Pace:</b>  loading...");
+        let (limit_item, limit_label) = markup_menu_item("<b>5h</b>  loading...");
+        let (weekly_item, weekly_label) = markup_menu_item("<b>Weekly</b>  loading...");
+        let (pace_item, pace_label) = markup_menu_item("<b>Pace:</b>  loading...");
         let (pace_expected_item, pace_expected_label) =
             markup_menu_item("   Expected usage:  <b>loading...</b>");
         let (cost_today_item, cost_today_label) =
-            markup_menu_item("🔵  Today's cost:  <b>loading...</b>");
+            markup_menu_item("Today's cost:  <b>loading...</b>");
         let (cost_month_item, cost_month_label) =
-            markup_menu_item("🔵  Monthly cost:  <b>loading...</b>");
+            markup_menu_item("Monthly cost:  <b>loading...</b>");
         let (cost_total_item, cost_total_label) =
-            markup_menu_item("🔵  Total estimated cost:  <b>loading...</b>");
+            markup_menu_item("Total estimated cost:  <b>loading...</b>");
         let (tokens_today_item, tokens_today_label) =
-            markup_menu_item("🟣  Today's token usage:  <b>loading...</b>");
+            markup_menu_item("Today's token usage:  <b>loading...</b>");
         let (tokens_total_item, tokens_total_label) =
-            markup_menu_item("🟣  Total token usage:  <b>loading...</b>");
+            markup_menu_item("Total token usage:  <b>loading...</b>");
         let settings = menu_item("Settings", true);
         let settings_menu = gtk_menu_new();
+        let usage_and_costs = menu_item("Token Usage & Costs", true);
+        let usage_and_costs_menu = gtk_menu_new();
         let (party_mode_item, party_mode_label) = markup_menu_item(&party_mode_markup());
         let (refresh_interval_item, refresh_interval_label) =
             markup_menu_item(&refresh_interval_markup());
@@ -1888,14 +1857,8 @@ fn main() {
             pace_item,
             pace_expected_item,
             gtk_separator_menu_item_new(),
-            cost_today_item,
-            cost_month_item,
-            cost_total_item,
-            gtk_separator_menu_item_new(),
-            tokens_today_item,
-            tokens_total_item,
-            gtk_separator_menu_item_new(),
             settings,
+            usage_and_costs,
             details,
             gtk_separator_menu_item_new(),
             refresh,
@@ -1915,7 +1878,18 @@ fn main() {
         ] {
             gtk_menu_shell_append(settings_menu, item);
         }
+        for item in [
+            cost_today_item,
+            cost_month_item,
+            cost_total_item,
+            gtk_separator_menu_item_new(),
+            tokens_today_item,
+            tokens_total_item,
+        ] {
+            gtk_menu_shell_append(usage_and_costs_menu, item);
+        }
         gtk_menu_item_set_submenu(settings, settings_menu);
+        gtk_menu_item_set_submenu(usage_and_costs, usage_and_costs_menu);
         connect_activate(party_mode_item, on_toggle_party_mode);
         connect_activate(refresh_5s, on_refresh_5s);
         connect_activate(refresh_15s, on_refresh_15s);
