@@ -126,6 +126,7 @@ unsafe extern "C" {
     fn gtk_menu_new() -> *mut GtkWidget;
     fn gtk_menu_item_new() -> *mut GtkWidget;
     fn gtk_menu_item_new_with_label(label: *const c_char) -> *mut GtkWidget;
+    fn gtk_menu_item_set_submenu(menu_item: *mut GtkWidget, submenu: *mut GtkWidget);
     fn gtk_separator_menu_item_new() -> *mut GtkWidget;
     fn gtk_menu_shell_append(menu_shell: *mut GtkWidget, child: *mut GtkWidget);
     fn gtk_widget_show_all(widget: *mut GtkWidget);
@@ -263,10 +264,12 @@ struct AppState {
     last_refresh_at: Option<i64>,
     seen_primary_window: bool,
     last_primary_resets_at: Option<i64>,
+    last_primary_reset_notified_at: Option<i64>,
     pace_alert_active: bool,
     pace_alert_window: Option<i64>,
     seen_secondary_window: bool,
     last_secondary_resets_at: Option<i64>,
+    last_secondary_reset_notified_at: Option<i64>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -1509,7 +1512,7 @@ fn show_confetti(message: &str, big: bool) {
         let window = gtk_window_new(0);
         let width = 1920.0;
         let height = 1080.0;
-        let frames = 10 * 60;
+        let frames = 5 * 60;
         gtk_layer_init_for_window(window);
         gtk_layer_set_namespace(window, c_string("codex-usage-party").as_ptr());
         gtk_layer_set_layer(window, 3);
@@ -1588,11 +1591,18 @@ fn send_plain_notification(body: &str) {
 fn maybe_notify_primary_reset(state: &mut AppState, rate: &RateLimits) {
     let current_reset = rate.primary.resets_at;
     if state.seen_primary_window {
-        let reset_moved = state
-            .last_primary_resets_at
+        let now = Utc::now().timestamp();
+        let previous_reset = state.last_primary_resets_at;
+        let reset_moved = previous_reset
             .zip(current_reset)
-            .is_some_and(|(previous, current)| current > previous);
-        if reset_moved {
+            .is_some_and(|(previous, current)| {
+                current > previous && state.last_primary_reset_notified_at != Some(previous)
+            });
+        let reset_deadline_passed = previous_reset.is_some_and(|previous| {
+            now >= previous && state.last_primary_reset_notified_at != Some(previous)
+        });
+        if reset_moved || reset_deadline_passed {
+            state.last_primary_reset_notified_at = previous_reset;
             send_reset_notification("The 5 hour rate limit has been reset! 🎉", false);
         }
     }
@@ -1628,11 +1638,18 @@ fn maybe_notify_fast_pace(state: &mut AppState, rate: &RateLimits) {
 fn maybe_notify_secondary_reset(state: &mut AppState, rate: &RateLimits) {
     let current_reset = rate.secondary.resets_at;
     if state.seen_secondary_window {
-        let reset_moved = state
-            .last_secondary_resets_at
+        let now = Utc::now().timestamp();
+        let previous_reset = state.last_secondary_resets_at;
+        let reset_moved = previous_reset
             .zip(current_reset)
-            .is_some_and(|(previous, current)| current > previous);
-        if reset_moved {
+            .is_some_and(|(previous, current)| {
+                current > previous && state.last_secondary_reset_notified_at != Some(previous)
+            });
+        let reset_deadline_passed = previous_reset.is_some_and(|previous| {
+            now >= previous && state.last_secondary_reset_notified_at != Some(previous)
+        });
+        if reset_moved || reset_deadline_passed {
+            state.last_secondary_reset_notified_at = previous_reset;
             send_reset_notification("THE WEEKLY RATE LIMIT HAS BEEN RESET! 🎉🎊🥳✨", true);
         }
     }
@@ -1850,6 +1867,8 @@ fn main() {
             markup_menu_item("🟣  Today's token usage:  <b>loading...</b>");
         let (tokens_total_item, tokens_total_label) =
             markup_menu_item("🟣  Total token usage:  <b>loading...</b>");
+        let settings = menu_item("Settings", true);
+        let settings_menu = gtk_menu_new();
         let (party_mode_item, party_mode_label) = markup_menu_item(&party_mode_markup());
         let (refresh_interval_item, refresh_interval_label) =
             markup_menu_item(&refresh_interval_markup());
@@ -1876,14 +1895,7 @@ fn main() {
             tokens_today_item,
             tokens_total_item,
             gtk_separator_menu_item_new(),
-            party_mode_item,
-            refresh_interval_item,
-            refresh_5s,
-            refresh_15s,
-            refresh_30s,
-            refresh_60s,
-            refresh_300s,
-            gtk_separator_menu_item_new(),
+            settings,
             details,
             gtk_separator_menu_item_new(),
             refresh,
@@ -1891,6 +1903,19 @@ fn main() {
         ] {
             gtk_menu_shell_append(menu, item);
         }
+        for item in [
+            party_mode_item,
+            gtk_separator_menu_item_new(),
+            refresh_interval_item,
+            refresh_5s,
+            refresh_15s,
+            refresh_30s,
+            refresh_60s,
+            refresh_300s,
+        ] {
+            gtk_menu_shell_append(settings_menu, item);
+        }
+        gtk_menu_item_set_submenu(settings, settings_menu);
         connect_activate(party_mode_item, on_toggle_party_mode);
         connect_activate(refresh_5s, on_refresh_5s);
         connect_activate(refresh_15s, on_refresh_15s);
@@ -1920,10 +1945,12 @@ fn main() {
                 last_refresh_at: None,
                 seen_primary_window: false,
                 last_primary_resets_at: None,
+                last_primary_reset_notified_at: None,
                 pace_alert_active: false,
                 pace_alert_window: None,
                 seen_secondary_window: false,
                 last_secondary_resets_at: None,
+                last_secondary_reset_notified_at: None,
             }))
             .ok();
         update_state(true);
