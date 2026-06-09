@@ -671,9 +671,9 @@ fn pace_delta_markup(limit: &WindowLimit) -> String {
     if diff < 0.5 {
         "<b>Pace:</b>  on pace".into()
     } else if pace.ahead_percent > 0.0 {
-        format!("<b>Pace:</b>  {:.1}% ↑", diff)
+        format!("<b>Pace:</b>  {:.1}% ↑ faster than expected", diff)
     } else {
-        format!("<b>Pace:</b>  {:.1}% ↓", diff)
+        format!("<b>Pace:</b>  {:.1}% ↓ slower than expected", diff)
     }
 }
 
