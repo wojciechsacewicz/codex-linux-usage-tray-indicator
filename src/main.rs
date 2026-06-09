@@ -252,7 +252,6 @@ struct AppState {
     limit_label: *mut GtkWidget,
     weekly_label: *mut GtkWidget,
     pace_label: *mut GtkWidget,
-    pace_expected_label: *mut GtkWidget,
     cost_today_label: *mut GtkWidget,
     cost_month_label: *mut GtkWidget,
     cost_total_label: *mut GtkWidget,
@@ -277,7 +276,6 @@ struct RenderSnapshot {
     limit_markup: String,
     weekly_markup: String,
     pace_markup: String,
-    pace_expected_markup: String,
     cost_today_markup: String,
     cost_month_markup: String,
     cost_total_markup: String,
@@ -662,6 +660,20 @@ fn pace_text(limit: &WindowLimit) -> String {
         format!("slow by {:.1}%", diff)
     } else {
         "on pace".into()
+    }
+}
+
+fn pace_delta_markup(limit: &WindowLimit) -> String {
+    let Some(pace) = primary_pace(limit) else {
+        return "<b>Pace:</b>  n/a".into();
+    };
+    let diff = pace.ahead_percent.abs();
+    if diff < 0.5 {
+        "<b>Pace:</b>  on pace".into()
+    } else if pace.ahead_percent > 0.0 {
+        format!("<b>Pace:</b>  {:.1}% ↑", diff)
+    } else {
+        format!("<b>Pace:</b>  {:.1}% ↓", diff)
     }
 }
 
@@ -1648,13 +1660,7 @@ fn make_render_snapshot(stats: &Stats) -> RenderSnapshot {
             reset_text(rate.secondary.resets_at),
             reset_clock_text(rate.secondary.resets_at)
         ),
-        pace_markup: format!("<b>Pace:</b>  {}", pace_text(&rate.primary)),
-        pace_expected_markup: format!(
-            "   Expected usage:  <b>{:.1}%</b>",
-            primary_pace(&rate.primary)
-                .map(|pace| pace.expected_percent)
-                .unwrap_or(0.0)
-        ),
+        pace_markup: pace_delta_markup(&rate.primary),
         cost_today_markup: format!("Today's cost:  <b>{}</b>", dollars(today_cost)),
         cost_month_markup: format!("Monthly cost:  <b>{}</b>", dollars(month_cost)),
         cost_total_markup: format!("Total estimated cost:  <b>{}</b>", dollars(total_cost)),
@@ -1711,7 +1717,6 @@ fn update_state(force: bool) {
             set_markup(state.limit_label, &snapshot.limit_markup);
             set_markup(state.weekly_label, &snapshot.weekly_markup);
             set_markup(state.pace_label, &snapshot.pace_markup);
-            set_markup(state.pace_expected_label, &snapshot.pace_expected_markup);
             set_markup(state.cost_today_label, &snapshot.cost_today_markup);
             set_markup(state.cost_month_label, &snapshot.cost_month_markup);
             set_markup(state.cost_total_label, &snapshot.cost_total_markup);
@@ -1822,8 +1827,7 @@ fn main() {
         let (limit_item, limit_label) = markup_menu_item("<b>5h</b>  loading...");
         let (weekly_item, weekly_label) = markup_menu_item("<b>Weekly</b>  loading...");
         let (pace_item, pace_label) = markup_menu_item("<b>Pace:</b>  loading...");
-        let (pace_expected_item, pace_expected_label) =
-            markup_menu_item("   Expected usage:  <b>loading...</b>");
+        gtk_widget_set_sensitive(rate_header, 0);
         let (cost_today_item, cost_today_label) =
             markup_menu_item("Today's cost:  <b>loading...</b>");
         let (cost_month_item, cost_month_label) =
@@ -1855,7 +1859,6 @@ fn main() {
             weekly_item,
             gtk_separator_menu_item_new(),
             pace_item,
-            pace_expected_item,
             gtk_separator_menu_item_new(),
             settings,
             usage_and_costs,
@@ -1907,7 +1910,6 @@ fn main() {
                 limit_label,
                 weekly_label,
                 pace_label,
-                pace_expected_label,
                 cost_today_label,
                 cost_month_label,
                 cost_total_label,
