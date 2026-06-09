@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img width="260" alt="Codex Usage Tray menu" src="https://github.com/user-attachments/assets/de3ac8bb-75ae-4f6f-a974-4aca186d2f89">
+  <img width="359" height="394" alt="image" src="https://github.com/user-attachments/assets/9900b3c1-2568-4777-b6c7-a00c3acaf904" />
 </p>
 
 <p align="center">
