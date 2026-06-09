@@ -249,7 +249,9 @@ unsafe extern "C" {
 
 struct AppState {
     indicator: *mut AppIndicator,
+    primary_header_label: *mut GtkWidget,
     limit_label: *mut GtkWidget,
+    weekly_header_label: *mut GtkWidget,
     weekly_label: *mut GtkWidget,
     pace_label: *mut GtkWidget,
     cost_today_label: *mut GtkWidget,
@@ -273,7 +275,9 @@ struct AppState {
 
 #[derive(Clone, PartialEq)]
 struct RenderSnapshot {
+    primary_header_markup: String,
     limit_markup: String,
+    weekly_header_markup: String,
     weekly_markup: String,
     pace_markup: String,
     cost_today_markup: String,
@@ -1654,19 +1658,23 @@ fn make_render_snapshot(stats: &Stats) -> RenderSnapshot {
     let today_cost = sum_cost(&stats.today_by_model);
     let month_cost = sum_cost(&stats.month_by_model);
     RenderSnapshot {
+        primary_header_markup: format!(
+            "<b>5h</b>  |  reset in {}",
+            reset_text(rate.primary.resets_at)
+        ),
         limit_markup: format!(
-            "{}  <b>{:.0}%</b>  |  reset in {} at {}",
+            "{}  <b>{:.0}%</b>",
             usage_bar(rate.primary.used_percent),
-            rate.primary.used_percent,
-            reset_text(rate.primary.resets_at),
-            reset_clock_text(rate.primary.resets_at)
+            rate.primary.used_percent
+        ),
+        weekly_header_markup: format!(
+            "<b>Weekly</b>  |  reset in {}",
+            reset_text(rate.secondary.resets_at)
         ),
         weekly_markup: format!(
-            "{}  <b>{:.0}%</b>  |  reset in {} at {}",
+            "{}  <b>{:.0}%</b>",
             usage_bar(rate.secondary.used_percent),
-            rate.secondary.used_percent,
-            reset_text(rate.secondary.resets_at),
-            reset_clock_text(rate.secondary.resets_at)
+            rate.secondary.used_percent
         ),
         pace_markup: pace_delta_markup(&rate.primary),
         cost_today_markup: format!("Today's cost:  <b>{}</b>", dollars(today_cost)),
@@ -1722,7 +1730,9 @@ fn update_state(force: bool) {
             return;
         }
         unsafe {
+            set_markup(state.primary_header_label, &snapshot.primary_header_markup);
             set_markup(state.limit_label, &snapshot.limit_markup);
+            set_markup(state.weekly_header_label, &snapshot.weekly_header_markup);
             set_markup(state.weekly_label, &snapshot.weekly_markup);
             set_markup(state.pace_label, &snapshot.pace_markup);
             set_markup(state.cost_today_label, &snapshot.cost_today_markup);
@@ -1832,9 +1842,9 @@ fn main() {
         app_indicator_set_icon_theme_path(indicator, icon_path.as_ptr());
         let menu = gtk_menu_new();
         let (rate_header, _rate_header_label) = markup_menu_item("<b>Rate limits</b>");
-        let (primary_header, _primary_header_label) = markup_menu_item("<b>5h</b>");
+        let (primary_header, primary_header_label) = markup_menu_item("<b>5h</b>");
         let (limit_item, limit_label) = markup_menu_item("▱▱▱▱▱▱▱▱▱▱  loading...");
-        let (weekly_header, _weekly_header_label) = markup_menu_item("<b>Weekly</b>");
+        let (weekly_header, weekly_header_label) = markup_menu_item("<b>Weekly</b>");
         let (weekly_item, weekly_label) = markup_menu_item("▱▱▱▱▱▱▱▱▱▱  loading...");
         let (pace_item, pace_label) = markup_menu_item("<b>Pace:</b>  loading...");
         gtk_widget_set_sensitive(rate_header, 0);
@@ -1921,7 +1931,9 @@ fn main() {
         STATE
             .set(Mutex::new(AppState {
                 indicator,
+                primary_header_label,
                 limit_label,
+                weekly_header_label,
                 weekly_label,
                 pace_label,
                 cost_today_label,
