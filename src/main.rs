@@ -22,6 +22,7 @@ const PRIMARY_WINDOW_SECONDS: i64 = 5 * 60 * 60;
 const WEEKLY_WINDOW_SECONDS: i64 = 7 * 24 * 60 * 60;
 const PACE_ALERT_AHEAD_PERCENT: f64 = 10.0;
 const PACE_ALERT_CLEAR_PERCENT: f64 = 5.0;
+const PARTY_OVERLAY_COOLDOWN_SECONDS: i64 = 10 * 60;
 
 #[derive(Clone, Default)]
 struct Usage {
@@ -118,6 +119,8 @@ struct GdkScreen(c_void);
 struct GdkVisual(c_void);
 #[repr(C)]
 struct Cairo(c_void);
+#[repr(C)]
+struct CairoRegion(c_void);
 
 #[link(name = "gtk-3")]
 unsafe extern "C" {
@@ -141,6 +144,7 @@ unsafe extern "C" {
     fn gtk_widget_set_valign(widget: *mut GtkWidget, align: c_int);
     fn gtk_widget_get_screen(widget: *mut GtkWidget) -> *mut GdkScreen;
     fn gtk_widget_set_visual(widget: *mut GtkWidget, visual: *mut GdkVisual);
+    fn gtk_widget_input_shape_combine_region(widget: *mut GtkWidget, region: *mut CairoRegion);
     fn gtk_widget_get_allocated_width(widget: *mut GtkWidget) -> c_int;
     fn gtk_widget_get_allocated_height(widget: *mut GtkWidget) -> c_int;
     fn gtk_label_new(str: *const c_char) -> *mut GtkWidget;
@@ -236,6 +240,8 @@ unsafe extern "C" {
 
 #[link(name = "cairo")]
 unsafe extern "C" {
+    fn cairo_region_create() -> *mut CairoRegion;
+    fn cairo_region_destroy(region: *mut CairoRegion);
     fn cairo_save(cr: *mut Cairo);
     fn cairo_restore(cr: *mut Cairo);
     fn cairo_set_source_rgba(cr: *mut Cairo, r: f64, g: f64, b: f64, a: f64);
@@ -297,6 +303,7 @@ unsafe impl Send for AppState {}
 
 static STATE: OnceLock<Mutex<AppState>> = OnceLock::new();
 static STATS_CACHE: OnceLock<Mutex<StatsCache>> = OnceLock::new();
+static LAST_PARTY_OVERLAY_AT: OnceLock<Mutex<Option<i64>>> = OnceLock::new();
 
 fn value_i64(value: &Value, key: &str) -> i64 {
     value.get(key).and_then(Value::as_i64).unwrap_or(0)
@@ -1363,6 +1370,16 @@ unsafe fn make_window_transparent(window: *mut GtkWidget) {
     }
 }
 
+unsafe fn make_window_click_through(window: *mut GtkWidget) {
+    unsafe {
+        let region = cairo_region_create();
+        if !region.is_null() {
+            gtk_widget_input_shape_combine_region(window, region);
+            cairo_region_destroy(region);
+        }
+    }
+}
+
 struct Particle {
     x: f64,
     y: f64,
@@ -1548,6 +1565,7 @@ fn show_confetti(message: &str, big: bool) {
         gtk_window_set_keep_above(window, 1);
         gtk_widget_set_size_request(window, width as c_int, height as c_int);
         make_window_transparent(window);
+        make_window_click_through(window);
 
         let overlay = gtk_overlay_new();
         let canvas = gtk_drawing_area_new();
@@ -1590,12 +1608,23 @@ fn show_confetti(message: &str, big: bool) {
     }
 }
 
+fn party_overlay_allowed() -> bool {
+    let now = Utc::now().timestamp();
+    let last_party = LAST_PARTY_OVERLAY_AT.get_or_init(|| Mutex::new(None));
+    let mut last_party = last_party.lock().unwrap();
+    if last_party.is_some_and(|last| now - last < PARTY_OVERLAY_COOLDOWN_SECONDS) {
+        return false;
+    }
+    *last_party = Some(now);
+    true
+}
+
 fn send_reset_notification(body: &str, party: bool) {
     let _ = Command::new("notify-send")
         .arg("Codex Usage")
         .arg(body)
         .spawn();
-    if party_mode_enabled() {
+    if party_mode_enabled() && party_overlay_allowed() {
         show_confetti(body, party);
     }
 }
